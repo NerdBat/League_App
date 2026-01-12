@@ -42,7 +42,7 @@ Lance cette commande pour installer tout le nécessaire (Streamlit, Pandas, Plot
 
 ```bash
 pip install requests pandas streamlit plotly matplotlib
-
+ ```
 
 ## 🖱️ Lancement Facile (Mode "Double-clic")
 
