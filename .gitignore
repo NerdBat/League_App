@@ -1,0 +1,36 @@
+# --- 🔒 SÉCURITÉ (Indispensable) ---
+.env
+.streamlit/secrets.toml
+# On ignore les clés API si elles sont dans des fichiers texte
+api_key.txt
+secrets.json
+
+# --- 🐍 PYTHON ---
+# Fichiers compilés (inutiles)
+__pycache__/
+*.pyc
+
+# --- 📦 ENVIRONNEMENT VIRTUEL ---
+# C'est lourd et spécifique à ta machine, on ne veut pas ça sur Git
+venv/
+.venv/
+env/
+bin/
+lib/
+include/
+
+# --- 💾 DONNÉES GÉNÉRÉES ---
+# On ne veut pas stocker l'historique de tes JSON qui changent tout le temps
+# (Sauf si tu veux garder un exemple, mais c'est mieux de laisser les scripts les recréer)
+esport_data.json
+leaderboard_data.json
+*.csv
+*.xlsx
+
+# --- 🍎 MAC & WINDOWS (Fichiers systèmes poubelles) ---
+.DS_Store
+Thumbs.db
+
+# --- 🛠️ IDE (Configuration de ton éditeur) ---
+.vscode/
+.idea/

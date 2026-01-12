@@ -3,9 +3,10 @@ import time
 import json
 import os
 from datetime import datetime
+from dotenv import load_dotenv
 
-# --- CONFIGURATION ---
-API_KEY = "RGAPI-3fbd8214-526e-4c96-b5b6-077020f75b95" # ⚠️ Remplace par ta vraie clé
+load_dotenv() # Charge le fichier .env
+API_KEY = os.getenv("RIOT_API_KEY")
 REGION_ROUTING = "europe" 
 START_DATE = "08/01/2026"
 DATA_FILE_PATH = "esport_data.json" # Fichier de sortie
