@@ -5,8 +5,13 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 
+<<<<<<< HEAD
 load_dotenv() # Charge le fichier .env
 API_KEY = os.getenv("RIOT_API_KEY")
+=======
+# --- CONFIGURATION ---
+API_KEY = "CLEF_API_A_MODIFIER_XDD" # ⚠️ Remplace par ta vraie clé
+>>>>>>> 4e1750ed0dd29bf9be342fce7c8bbb0847522ecc
 REGION_ROUTING = "europe" 
 START_DATE = "08/01/2026"
 DATA_FILE_PATH = "esport_data.json" # Fichier de sortie
@@ -17,7 +22,7 @@ HEADERS = {
 }
 
 TEAM_PLAYERS = [
-    {"gameName": "Kaneki", "tagLine": "3008"},
+    {"gameName": "NomDeJoueur", "tagLine": "TagDeJoueur"},
     # Ajoute les autres ici
 ]
 
