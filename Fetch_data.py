@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 
 # --- CONFIGURATION ---
-API_KEY = "RGAPI-3fbd8214-526e-4c96-b5b6-077020f75b95" # ⚠️ Remplace par ta vraie clé
+API_KEY = "CLEF_API_A_MODIFIER_XDD" # ⚠️ Remplace par ta vraie clé
 REGION_ROUTING = "europe" 
 START_DATE = "08/01/2026"
 DATA_FILE_PATH = "esport_data.json" # Fichier de sortie
