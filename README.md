@@ -42,3 +42,24 @@ Lance cette commande pour installer tout le nécessaire (Streamlit, Pandas, Plot
 
 ```bash
 pip install requests pandas streamlit plotly matplotlib
+
+
+## 🖱️ Lancement Facile (Mode "Double-clic")
+
+Une fois l'installation terminée, pas besoin d'ouvrir le terminal à chaque fois !
+
+### 👉 Pour Windows 🪟
+Double-cliquez simplement sur le fichier :
+📂 **`Lancer_Windows.bat`**
+
+### 👉 Pour Mac 🍎
+Double-cliquez sur le fichier :
+📂 **`Lancer_Mac.command`**
+
+> **Note pour Mac :** Si le fichier ne se lance pas la première fois (permission refusée), faites ceci une seule fois :
+> 1. Ouvrez le terminal.
+> 2. Tapez `chmod +x ` (avec un espace après le x).
+> 3. Glissez le fichier `Lancer_Mac.command` dans la fenêtre du terminal.
+> 4. Appuyez sur Entrée. C'est bon pour toujours !
+
+---
