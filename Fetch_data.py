@@ -16,7 +16,7 @@ HEADERS = {
 }
 
 TEAM_PLAYERS = [
-    {"gameName": "Kaneki", "tagLine": "3008"},
+    {"gameName": "NomDeJoueur", "tagLine": "TagDeJoueur"},
     # Ajoute les autres ici
 ]
 
