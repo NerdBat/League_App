@@ -1,15 +1,14 @@
 import requests
 import time
-from collections import defaultdict
+import json
+import os
 from datetime import datetime
 
 # --- CONFIGURATION ---
-API_KEY = "RGAPI-3fbd8214-526e-4c96-b5b6-077020f75b95"
-REGION_ROUTING = "europe" # europe, americas, asia
-
-# Date de début (Format Jour/Mois/Année)
-# Ex: "10/01/2024" pour le début de la saison 14 (environ)
+API_KEY = "RGAPI-3fbd8214-526e-4c96-b5b6-077020f75b95" # ⚠️ Remplace par ta vraie clé
+REGION_ROUTING = "europe" 
 START_DATE = "08/01/2026"
+DATA_FILE_PATH = "esport_data.json" # Fichier de sortie
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Python Script)",
@@ -21,179 +20,172 @@ TEAM_PLAYERS = [
     # Ajoute les autres ici
 ]
 
-# --- 1. LE MOTEUR (Gestion des requêtes) ---
+# --- 1. LE MOTEUR API ---
 def safe_request(url, params=None):
-    """Gère les appels API et les temps d'attente (Rate Limits)"""
     while True:
-        response = requests.get(url, headers=HEADERS, params=params)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # Petite pause pour être gentil avec les serveurs Riot
-            time.sleep(1.2) 
-            return data
-            
-        elif response.status_code == 429:
-            # Si Riot dit stop, on attend le temps demandé
-            wait_time = int(response.headers.get("Retry-After", 10))
-            print(f"   ⚠️ Pause forcée par Riot : {wait_time}s d'attente...")
-            time.sleep(wait_time)
-            
-        elif response.status_code == 404:
-            return None # Donnée non trouvée
-            
-        else:
-            print(f"   ❌ Erreur Technique {response.status_code} sur {url}")
+        try:
+            response = requests.get(url, headers=HEADERS, params=params)
+            if response.status_code == 200:
+                time.sleep(1.2) # Rate limit friendly
+                return response.json()
+            elif response.status_code == 429:
+                wait = int(response.headers.get("Retry-After", 10))
+                print(f"   ⚠️ Pause Riot : {wait}s...")
+                time.sleep(wait)
+            elif response.status_code == 404:
+                return None
+            else:
+                print(f"   ❌ Erreur {response.status_code} sur {url}")
+                return None
+        except Exception as e:
+            print(f"   ❌ Exception: {e}")
             return None
 
-# --- 2. LES OUTILS (Récupération des données) ---
 def get_puuid(game_name, tag_line):
     url = f"https://{REGION_ROUTING}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
     data = safe_request(url)
     return data.get("puuid") if data else None
 
 def get_matches_since(puuid, date_string):
-    """Récupère TOUS les IDs de match depuis une date précise (avec pagination)"""
-    
-    # Conversion date string -> Timestamp (secondes)
     date_obj = datetime.strptime(date_string, "%d/%m/%Y")
     start_timestamp = int(date_obj.timestamp())
     
     all_match_ids = []
     start_index = 0
-    
-    print(f"   📅 Recherche des matchs depuis le {date_string}...")
+    print(f"   📅 Recherche matchs depuis {date_string}...")
     
     while True:
         url = f"https://{REGION_ROUTING}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids"
-        params = {
-            "startTime": start_timestamp,
-            "start": start_index,
-            "count": 100 # Maximum autorisé par appel
-        }
-        
+        params = {"startTime": start_timestamp, "start": start_index, "count": 100}
         batch = safe_request(url, params)
+        if not batch: break
         
-        if not batch: # Si liste vide, on a fini
-            break
-            
         all_match_ids.extend(batch)
-        print(f"      ↳ Trouvé {len(batch)} matchs (Total: {len(all_match_ids)})...")
-        
-        if len(batch) < 100: # Si on reçoit moins de 100 matchs, c'est la dernière page
-            break
-            
-        start_index += 100 # On prépare la page suivante
+        print(f"      ↳ {len(all_match_ids)} matchs trouvés...")
+        if len(batch) < 100: break
+        start_index += 100
         
     return all_match_ids
 
-def analyze_stats(puuid, match_ids):
-    """Analyse détaillée des performances"""
+# --- 2. EXTRACTION DE DONNÉES (RAW DATA) ---
+def extract_match_data(puuid, match_ids):
+    """Récupère les données BRUTES de chaque match pour le JSON"""
+    matches_data = []
     
-    # Stockage : {'Ahri': {'games': 0, 'wins': 0, 'dmg': 0}, ...}
-    champ_stats = defaultdict(lambda: {'games': 0, 'wins': 0, 'dmg': 0})
-    
-    total_wins = 0
-    valid_games = 0
-    
-    print(f"   ⏳ Analyse détaillée des stats (ça peut être long)...")
+    print(f"   ⏳ Extraction détaillée ({len(match_ids)} matchs)...")
     
     for i, match_id in enumerate(match_ids):
-        # Petit log pour voir l'avancement
-        if i % 5 == 0: print(f"      Traitement match {i+1}/{len(match_ids)}...")
+        if i % 5 == 0: print(f"      Extraction {i+1}/{len(match_ids)}...")
             
         url = f"https://{REGION_ROUTING}.api.riotgames.com/lol/match/v5/matches/{match_id}"
         data = safe_request(url)
-        
         if not data: continue
         
         info = data["info"]
-        duration = info["gameDuration"]
+        if info["gameDuration"] < 300: continue # Skip remakes
         
-        if duration < 300: continue # Ignorer les remakes
-        
-        # Trouver le joueur
         player = next((p for p in info["participants"] if p["puuid"] == puuid), None)
-        
-        if player:
-            champ = player["championName"]
-            damage = player["totalDamageDealtToChampions"]
-            dpm = damage / (duration / 60)
-            win = player["win"]
+        if not player: continue
+
+        # Calculs préliminaires
+        duration_min = info["gameDuration"] / 60
+        dpm = player["totalDamageDealtToChampions"] / duration_min
+        gpm = player["goldEarned"] / duration_min
+
+        # On structure l'objet match pour le JSON
+        match_entry = {
+            "match_id": match_id,
+            "game_date": info["gameEndTimestamp"], # En ms
+            "duration_sec": info["gameDuration"],
+            "win": player["win"],
             
-            valid_games += 1
-            if win: total_wins += 1
+            # Identité
+            "champion": player["championName"],
+            "role": player["teamPosition"], # TOP, JUNGLE, MIDDLE, BOTTOM, UTILITY
             
-            # Stats par champion
-            champ_stats[champ]['games'] += 1
-            if win: champ_stats[champ]['wins'] += 1
-            champ_stats[champ]['dmg'] += dpm
+            # Combat
+            "kills": player["kills"],
+            "deaths": player["deaths"],
+            "assists": player["assists"],
+            "kda": player["challenges"].get("kda", 0), # Riot calcule le KDA parfois
+            
+            # Performance
+            "damage_total": player["totalDamageDealtToChampions"],
+            "dpm": round(dpm, 1),
+            "gold_total": player["goldEarned"],
+            "gpm": round(gpm, 1),
+            "cs_total": player["totalMinionsKilled"] + player["neutralMinionsKilled"],
+            "cs_min": round((player["totalMinionsKilled"] + player["neutralMinionsKilled"]) / duration_min, 1),
+            
+            # Vision
+            "vision_score": player["visionScore"],
+            "wards_placed": player["wardsPlaced"],
+            "wards_killed": player["wardsKilled"]
+        }
+        matches_data.append(match_entry)
 
-    if valid_games == 0: return None
+    return matches_data
 
-    # --- Synthèse ---
-    global_wr = (total_wins / valid_games) * 100
+# --- 3. FONCTION D'AFFICHAGE CONSOLE (Juste pour le style) ---
+def print_summary_from_data(matches):
+    if not matches: return
     
-    final_list = []
-    for name, s in champ_stats.items():
-        final_list.append({
-            "name": name,
-            "games": s['games'],
-            "winrate": (s['wins'] / s['games']) * 100,
-            "dpm": s['dmg'] / s['games']
-        })
-        
-    # Tris
-    most_played = sorted(final_list, key=lambda x: x['games'], reverse=True)[0]
+    total_games = len(matches)
+    wins = sum(1 for m in matches if m['win'])
+    wr = (wins / total_games) * 100
     
-    # Pour le meilleur WR, on prend ceux avec > 1 game si possible
-    pool = [c for c in final_list if c['games'] > 1] or final_list
-    best_wr = sorted(pool, key=lambda x: x['winrate'], reverse=True)[0]
+    # Trouver Main Champ
+    champ_counts = {}
+    for m in matches:
+        champ_counts[m['champion']] = champ_counts.get(m['champion'], 0) + 1
+    main_champ = max(champ_counts, key=champ_counts.get)
     
-    best_dpm = sorted(final_list, key=lambda x: x['dpm'], reverse=True)[0]
+    # Trouver Best DPM
+    best_dpm_game = max(matches, key=lambda x: x['dpm'])
+    
+    print(f"\n📊 BILAN ({total_games} games) :")
+    print(f"   🏆 Winrate Global : {wr:.1f}%")
+    print(f"   🛡️ Main Champ     : {main_champ} ({champ_counts[main_champ]} games)")
+    print(f"   ⚔️ Top DPM        : {best_dpm_game['champion']} ({best_dpm_game['dpm']} DPM)")
 
-    return {
-        "count": valid_games,
-        "wr": global_wr,
-        "main": most_played,
-        "best_wr": best_wr,
-        "best_dpm": best_dpm
-    }
-
-# --- 3. L'EXÉCUTION ---
+# --- 4. EXÉCUTION & SAUVEGARDE ---
 def main():
-    print("🚀 DÉMARRAGE DE L'ANALYSEUR ESPORT\n")
+    print("🚀 DÉMARRAGE DE L'ANALYSEUR ESPORT (Mode JSON)\n")
+    
+    # Structure finale du JSON
+    full_database = {
+        "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "players": {}
+    }
     
     for p in TEAM_PLAYERS:
         full_name = f"{p['gameName']}#{p['tagLine']}"
-        print(f"👤 ANALYSE DU JOUEUR : {full_name}")
+        print(f"👤 JOUEUR : {full_name}")
         
-        # 1. PUUID
         puuid = get_puuid(p['gameName'], p['tagLine'])
-        if not puuid:
-            print("   ❌ Joueur introuvable.")
-            continue
+        if not puuid: continue
             
-        # 2. MATCHS IDs (Loop temporel)
         match_ids = get_matches_since(puuid, START_DATE)
-        
-        if not match_ids:
-            print("   ❌ Aucun match trouvé sur cette période.")
-            continue
+        if not match_ids: continue
             
-        # 3. STATS (Le gros morceau)
-        stats = analyze_stats(puuid, match_ids)
+        # Récupération des données brutes
+        player_matches = extract_match_data(puuid, match_ids)
         
-        if stats:
-            print(f"\n📊 BILAN DEPUIS LE {START_DATE} ({stats['count']} games) :")
-            print(f"   🏆 Winrate Global : {stats['wr']:.1f}%")
-            print(f"   🛡️ Main Champ     : {stats['main']['name']} ({stats['main']['games']} games)")
-            print(f"   📈 Best Winrate   : {stats['best_wr']['name']} ({stats['best_wr']['winrate']:.0f}%)")
-            print(f"   ⚔️ Top DPM        : {stats['best_dpm']['name']} ({int(stats['best_dpm']['dpm'])} DPM)")
+        # Ajout au dictionnaire global
+        full_database["players"][full_name] = player_matches
         
+        # Affichage console pour vérifier que tout va bien
+        print_summary_from_data(player_matches)
         print("-" * 50)
         
-    print("\n🏁 TERMINE !")
+    # Sauvegarde dans le fichier JSON
+    print(f"\n💾 Sauvegarde des données dans '{DATA_FILE_PATH}'...")
+    try:
+        with open(DATA_FILE_PATH, "w", encoding="utf-8") as f:
+            json.dump(full_database, f, indent=4)
+        print("✅ Sauvegarde réussie !")
+    except Exception as e:
+        print(f"❌ Erreur sauvegarde : {e}")
 
 if __name__ == "__main__":
     main()
